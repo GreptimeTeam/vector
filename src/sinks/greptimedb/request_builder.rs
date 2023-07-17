@@ -131,7 +131,11 @@ fn encode_distribution(samples: &[Sample], columns: &mut Vec<Column>) {
 
 fn encode_histogram(buckets: &[Bucket], columns: &mut Vec<Column>) {
     for bucket in buckets {
-        let column_name = format!("b{}", bucket.upper_limit);
+        let normalized_boundary = bucket
+            .upper_limit
+            .to_string()
+            .replace(|c| c == '.' || c == '-', "_");
+        let column_name = format!("b{}", normalized_boundary);
         columns.push(f64_field(&column_name, bucket.count as f64));
     }
 }
@@ -277,15 +281,15 @@ mod tests {
 
     #[test]
     fn test_histogram() {
-        let buckets = vector_core::buckets![1.0 => 1, 2.0 => 2, 3.0 => 1];
+        let buckets = vector_core::buckets![-2.5 => 2, 1.0 => 1, 2.0 => 2, 3.0 => 1];
         let buckets_len = buckets.len();
         let metric = Metric::new(
             "cpu_seconds_total",
             MetricKind::Incremental,
             MetricValue::AggregatedHistogram {
                 buckets,
-                count: 4,
-                sum: 8.0,
+                count: 6,
+                sum: 3.0,
             },
         );
         let insert = metric_to_insert_request(metric);
@@ -294,11 +298,12 @@ mod tests {
             1 + SUMMARY_STAT_FIELD_COUNT + buckets_len
         );
 
+        assert_eq!(get_column(&insert.columns, "b_2_5"), 2.0);
         assert_eq!(get_column(&insert.columns, "b1"), 1.0);
         assert_eq!(get_column(&insert.columns, "b2"), 2.0);
         assert_eq!(get_column(&insert.columns, "b3"), 1.0);
-        assert_eq!(get_column(&insert.columns, "count"), 4.0);
-        assert_eq!(get_column(&insert.columns, "sum"), 8.0);
+        assert_eq!(get_column(&insert.columns, "count"), 6.0);
+        assert_eq!(get_column(&insert.columns, "sum"), 3.0);
     }
 
     #[test]
